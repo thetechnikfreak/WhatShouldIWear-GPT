@@ -84,6 +84,23 @@
             resize: none;
             overflow-y: hidden; /* Hide scrollbars initially */
         }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+.loading-bar {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 10px;
+        padding: 10px;
+        background-color: #f0f0f0;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        color: #333;
+        font-size: 16px;
+        font-weight: bold;
+    }
     </style>
 </head>
 <body onload="initMap()">
@@ -100,8 +117,12 @@
             <input type="text" id="whatdo" name="whatdo" placeholder="Enter activity...">
             <button type="button" id="sendButton" onclick="generateResponse()">Submit</button>
         </form>
+<div id="loading" class="loading-bar" style="display: none;">
+    Generating response, please wait...
+</div>
 
         <textarea id="responseData" name="responseData" placeholder="AI Response will appear here..." readonly></textarea>
+        <div id="error" class="error"></div>
     </div>
 
     <!-- Leaflet and Plugins Scripts -->
@@ -110,6 +131,11 @@
     <script src="https://unpkg.com/leaflet.locatecontrol/dist/L.Control.Locate.min.js"></script>
 
     <script>
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('responseData').value = '';
+});
+
         const OPENAI_API_KEY = "sk-pxNju75vKyXJVhjySvLCTdKxluNcijXvQDgFmpRRjZIWgAqe"; // The API key
         var messages = [{ role: 'system', content: 'You are WhatShouldIWear GPT, an expert virtual stylist here to help people choose the perfect outfit. Your recommendations will be shown to the user.' }];
         var sentMessages = [];
@@ -126,75 +152,112 @@
                 const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
                 const data = await response.json();
                 console.log(data);
-                return data;
+                return data.current_weather;
             } catch (error) {
                 console.error('Error fetching weather data:', error);
+                document.getElementById('error').innerText = 'Error fetching weather data. Please try again later.';
                 return null;
             }
         }
 
         async function generateResponse() {
-    const latitude = document.getElementById('latitude').value;
-    const longitude = document.getElementById('longitude').value;
-    const weather = await fetchWeatherData(latitude, longitude);
-    const activity = document.getElementById('whatdo').value;
+            const latitude = document.getElementById('latitude').value;
+            const longitude = document.getElementById('longitude').value;
+            const activity = document.getElementById('whatdo').value;
 
-    if (weather !== null) {
-        var inputText = `You are WhatShouldIWear GPT, an expert virtual stylist here to help people choose the perfect outfit. The user plans to do ${activity}.`;
+            if (!latitude || !longitude || !activity) {
+                document.getElementById('error').innerText = 'Please make sure you have selected a location and entered an activity.';
+                return;
+            }
+   document.getElementById('loading').style.display = 'flex'; // Show loading bar
+    document.getElementById('error').innerText = ''; // Clear previous errors
 
-        // Append weather information
-        inputText += ` The current weather is ${weather.temperature}°C with ${weather.weathercode} weather condition. Wind speed is ${weather.windspeed} km/h from ${weather.winddirection}°.`;
+            const weather = await fetchWeatherData(latitude, longitude);
 
-        messages.push({ role: "user", content: inputText });
-        sentMessages.push({ role: "user", content: inputText });
-        console.log(messages);
-        console.log(sentMessages);
+            if (weather !== null) {
+                var inputText = `You are WhatShouldIWear GPT, an expert virtual stylist here to help people choose the perfect outfit. The user plans to do ${activity}.`;
 
-        try {
-            const response = await fetch('https://api.chatanywhere.tech/v1/chat/completions', {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${OPENAI_API_KEY}`,
-                },
-                body: JSON.stringify({
-                    model: "gpt-3.5-turbo",
-                    messages: sentMessages,
-                    temperature: 1.0,
-                    weather: {
-                        temperature: weather.temperature,
-                        weathercode: weather.weathercode,
-                        windspeed: weather.windspeed,
-                        winddirection: weather.winddirection
-                    }
-                }),
-            });
-            const responseData = await response.json();
-            console.log(responseData);
-            document.getElementById('responseData').value = responseData.choices[0].message.content; // Adjust according to the actual structure of responseData
+                // Append weather information
+                inputText += ` The current weather is ${weather.temperature}°C with ${weather.weathercode} weather condition. Wind speed is ${weather.windspeed} km/h from ${weather.winddirection}°.`;
 
-            // Auto-adjust textarea height based on content
-            adjustTextareaHeight('responseData');
-        } catch (error) {
-            console.error('Error fetching AI response:', error);
+                messages.push({ role: "user", content: inputText });
+                sentMessages.push({ role: "user", content: inputText });
+                console.log(messages);
+                console.log(sentMessages);
+
+                try {
+                    const response = await fetch('https://api.chatanywhere.tech/v1/chat/completions', {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${OPENAI_API_KEY}`,
+                        },
+                        body: JSON.stringify({
+                            model: "gpt-3.5-turbo",
+                            messages: sentMessages,
+                            temperature: 1.0,
+                            weather: {
+                                temperature: weather.temperature,
+                                weathercode: weather.weathercode,
+                                windspeed: weather.windspeed,
+                                winddirection: weather.winddirection
+                            }
+                        }),
+                    });
+                    const responseData = await response.json();
+                    console.log(responseData);
+                    document.getElementById('responseData').value = responseData.choices[0].message.content; // Adjust according to the actual structure of responseData
+
+                    // Auto-adjust textarea height based on content
+                    adjustTextareaHeight('responseData');
+document.getElementById('loading').style.display = 'none'; 
+                } catch (error) {
+                    console.error('Error fetching AI response:', error);
+                    document.getElementById('error').innerText = 'Error fetching AI response. Please try again later.';
+                }
+            } else {
+                document.getElementById('error').innerText = 'Could not get weather data. Please try again later.';
+                
+            }
         }
-    } else {
-        console.error('Could not get weather data.');
-    }
-}
 
-async function fetchWeatherData(lat, lon) {
-    try {
-        const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
-        const data = await response.json();
-        console.log(data);
-        return data.current_weather;
-    } catch (error) {
-        console.error('Error fetching weather data:', error);
-        return null;
-    }
-}
+        // Function to adjust textarea height based on content
+        function adjustTextareaHeight(id) {
+            const textarea = document.getElementById(id);
+            textarea.style.height = 'auto'; // Reset height to auto to properly calculate scrollHeight
+            textarea.style.height = textarea.scrollHeight + 'px'; // Set height to scrollHeight of textarea content
+        }
 
+        function initMap() {
+            var map = L.map('map').setView([51.505, -0.09], 13);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            var marker = L.marker([51.505, -0.09], {
+                draggable: true
+            }).addTo(map);
+
+            marker.on('dragend', function(e) {
+                document.getElementById('latitude').value = marker.getLatLng().lat;
+                document.getElementById('longitude').value = marker.getLatLng().lng;
+            });
+
+            var geocoder = L.Control.geocoder({
+                defaultMarkGeocode: false
+            })
+            .on('markgeocode', function(e) {
+                var latlng = e.geocode.center;
+                map.setView(latlng, map.getZoom());
+                marker.setLatLng(latlng);
+                document.getElementById('latitude').value = latlng.lat;
+                document.getElementById('longitude').value = latlng.lng;
+            })
+            .addTo(map);
+
+            L.control.locate().addTo(map);
+        }
 
         // Function to adjust textarea height based on content
         function adjustTextareaHeight(id) {
